@@ -1,7 +1,8 @@
 from re import A
 import discord
 import random
-from settings import MYTOKEN, WORDLEBANK
+from settings import MYTOKEN
+from utils import WORDLEBANK
 
 WORDS = WORDLEBANK
 WORDS_SET = set(WORDS)
@@ -90,7 +91,7 @@ class WordleClient(discord.Client):
 
         # Make a pretty history first
         for i in range(5):
-            out_string += f":regional_indicator_{guess[i].lower()}:"
+            out_string += f":regional_indicator_{guess[i].lower()}: "
         out_string += "\n"
 
         for i in range(5):
@@ -103,9 +104,9 @@ class WordleClient(discord.Client):
         out_string += "\n"
         print(out_string)
         self.history += out_string
+        self.turns += 1
         if guess == self.word:
             return 1  # win
-        self.turns += 1
         if self.turns == 6:
             return -1  # loss
         return 0  # game continues
