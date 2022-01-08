@@ -2,10 +2,22 @@ import random
 from settings import MYTOKEN
 from utils import WORDLEBANK
 
+import discord
 from discord.ext import commands
+from discord.commands import Option
+import logging
 
 WORDS = WORDLEBANK
 WORDS_SET = set(WORDS)
+
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger("discord")
+# logger.setLevel(logging.DEBUG)
+# handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
+# handler.setFormatter(
+#     logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s")
+# )
+# logger.addHandler(handler)
 
 
 class WordleGame:
@@ -74,19 +86,10 @@ class WordleGame:
         return self.letters
 
 
-class MyContext(commands.Context):
-    async def checkGame(self, guild_id):
-        return guild_id in self.gamess
-
-
-class WordleBot(commands.Bot):
+class WordleBot(discord.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.games = dict()
-
-    # Override superclass Context class with my own
-    async def get_context(self, message, *, cls=MyContext):
-        return await super().get_context(message, cls=cls)
 
     async def on_ready(self):
         print(f"Logged in as {self.user.name}")
@@ -117,54 +120,60 @@ class WordleBot(commands.Bot):
             return None
 
 
-bot = WordleBot(command_prefix="$")
+intents = discord.Intents(messages=True, guilds=True)
+intents.typing = False
+intents.presences = False
+bot = WordleBot(intents=intents)
+
+# guild_ids = [920463166591361076, 854112523464212510]
+guild_ids = None
 
 
-# @bot.slash_command()
-@bot.command()
-async def start(ctx, game_type: str):
+@bot.slash_command(guild_ids=guild_ids)
+async def start(
+    ctx,
+    game_type: Option(str, "Choose game type", choices=["collab", "solo", "custom"]),
+):
     """Starts a new Wordle game (solo, collab, custom) if one hasn't begun already.
     """
     gid = ctx.guild.id
 
     if await bot.checkGame(gid):
-        await ctx.send(
+        await ctx.respond(
             "Game already started. End the game first before starting a new one."
         )
         return
 
     if game_type == "collab":
-        await ctx.send("Starting standard game of Wordle...")
+        await ctx.respond("Starting standard game of Wordle...")
         word = random.choice(WORDS)
 
         host = ctx.author
         await bot.addGame(gid, WordleGame(host, ctx.guild.name, ctx.channel.name, word))
         await ctx.send("Send in a guess. You have 6 guesses.")
     elif game_type == "solo":
-        await ctx.send("Feature not yet supported. Try something else!")
+        await ctx.respond("Feature not yet supported. Try something else!")
     elif game_type == "custom":
-        await ctx.send("Feature not yet supported. Try something else!")
+        await ctx.respond("Feature not yet supported. Try something else!")
     else:
-        await ctx.send(
+        await ctx.respond(
             f"Invalid game type chosen. Choose either solo, collab, or custom."
         )
 
 
-# @bot.slash_command()
-@bot.command()
+@bot.slash_command(guild_ids=guild_ids)
 async def review(ctx):
     """Review your previous guesses."""
-    await ctx.send("Your guesses so far are:")
+    await ctx.respond("Your guesses so far are:")
     game = await bot.getGame(ctx.guild.id)
     await ctx.send(game.getHistory())
 
 
-# @bot.slash_command()
-@bot.command()
+@bot.slash_command(guild_ids=guild_ids)
 async def letters(ctx):
     """Get which letters are still possible."""
     game = await bot.getGame(ctx.guild.id)
-    await ctx.send("Your available letters are:")
+    await ctx.respond("Your available letters are:")
     for k, v in game.getLetters().items():
         if k == "open":
             await ctx.send(f":white_circle: Open letters: {' '.join(v)}")
@@ -172,19 +181,18 @@ async def letters(ctx):
             await ctx.send(f":green_circle: Found letters: {' '.join(v)}")
 
 
-# @bot.slash_command()
-@bot.command()
-async def guess(ctx, guess: str):
+@bot.slash_command(guild_ids=guild_ids)
+async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
     """Make a guess in a wordle game."""
     guess = guess.upper()
     print(f"Attempted guess in [{ctx.guild.name}] was {guess}")
     if len(guess) != 5:
-        await ctx.send("Guess invalid, needs to be 5 letters.")
+        await ctx.respond("Guess invalid, needs to be 5 letters.")
         return
     if guess not in WORDS_SET:
-        await ctx.send("Guess invalid, needs to be real 5 letter word.")
+        await ctx.respond("Guess invalid, needs to be real 5 letter word.")
         return
-    await ctx.send(f"Your guess was: {guess}")
+    await ctx.respond(f"Your guess was: {guess}")
     gid = ctx.guild.id
     game = await bot.getGame(gid)
     guess_result, response = game.process_guess(guess)
@@ -196,14 +204,13 @@ async def guess(ctx, guess: str):
     return
 
 
-# @bot.slash_command()
-@bot.command()
+@bot.slash_command(guild_ids=guild_ids)
 async def end(ctx):
     """Ends game in current guild."""
     gid = ctx.guild.id
     game = await bot.getGame(gid)
     word = game.endGame()
-    await ctx.send(f"Game over! The word was {word}")
+    await ctx.respond(f"Game over! The word was {word}")
     await bot.deleteGame(gid)
 
 
