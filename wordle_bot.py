@@ -1,4 +1,3 @@
-from re import A
 import discord
 import random
 from settings import MYTOKEN
@@ -45,6 +44,17 @@ class WordleClient(discord.Client):
             if message.content == "$review":
                 await message.channel.send("Your guesses so far are:")
                 await message.channel.send(self.history)
+            elif message.content == "$letters":
+                await message.channel.send("Your available letters are:")
+                for k, v in self.letters.items():
+                    if k == "open":
+                        await message.channel.send(
+                            f":white_circle: Open letters: {' '.join(v)}"
+                        )
+                    else:
+                        await message.channel.send(
+                            f":green_circle: Found letters: {' '.join(v)}"
+                        )
             elif message.content.startswith("$guess"):
                 guess = message.content.split()[1].strip().upper()
                 print(f"Attempted guess was {guess}")
@@ -76,18 +86,22 @@ class WordleClient(discord.Client):
                         )
                 return
 
-        # Behavior for current games
-
     def initialize_game(self, host, word):
         self.game_started = True
         self.host = host
         self.word = word
         self.turns = 0
         self.history = ""
+        self.letters = {
+            "open": list(map(chr, range(ord("A"), ord("Z") + 1))),
+            "good": [],
+        }
         print(f"Game started by {host} with word {word}.")
 
     def process_guess(self, guess):
         out_string = ""
+        letters_open = self.letters["open"]
+        letters_good = self.letters["good"]
 
         # Make a pretty history first
         for i in range(5):
@@ -95,12 +109,19 @@ class WordleClient(discord.Client):
         out_string += "\n"
 
         for i in range(5):
+            if guess[i] in letters_open:
+                letters_open.remove(guess[i])
+
             if guess[i] == self.word[i]:
-                out_string += ":green_circle:"
+                out_string += ":green_circle: "
+                if guess[i] not in letters_good:
+                    letters_good.append(guess[i])
             elif guess[i] in self.word:
-                out_string += ":yellow_circle:"
+                out_string += ":yellow_circle: "
+                if guess[i] not in letters_good:
+                    letters_good.append(guess[i])
             else:
-                out_string += ":black_circle:"
+                out_string += ":black_circle: "
         out_string += "\n"
         print(out_string)
         self.history += out_string
@@ -109,7 +130,7 @@ class WordleClient(discord.Client):
             return 1  # win
         if self.turns == 6:
             return -1  # loss
-        return 0  # game continues
+        return 0  # game continuesA
 
 
 client = WordleClient()
