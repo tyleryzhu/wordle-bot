@@ -127,8 +127,8 @@ intents.typing = False
 intents.presences = False
 bot = WordleBot(intents=intents)
 
-# guild_ids = [920463166591361076, 854112523464212510]
-guild_ids = [854112523464212510]
+guild_ids = [920463166591361076, 854112523464212510]
+# guild_ids = [854112523464212510]
 # guild_ids = None
 
 
