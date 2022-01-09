@@ -95,6 +95,7 @@ class WordleBot(discord.Bot):
 
     async def on_ready(self):
         print(f"Logged in as {self.user.name}")
+        await bot.change_presence(activity=discord.Game(name="Wordle! Use /start"))
 
     async def on_command_error(self, ctx, error):
         await ctx.send(f"Error: {error}")
