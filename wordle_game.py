@@ -1,4 +1,9 @@
 import random
+from typing import List
+
+import discord
+from discord.ext import commands
+from discord.user import User
 
 from utils import WORDLEBANK
 
@@ -7,7 +12,7 @@ WORDS_SET = set(WORDS)
 
 
 class WordleGame:
-    def __init__(self, host, guild_name, channel, word):
+    def __init__(self, host: User, guild_name: str, channel: str, word: str):
         self.game_started = True
         self.host = host
         self.guild_name = guild_name
@@ -21,7 +26,7 @@ class WordleGame:
         }
         print(f"Game started by {host} in guild [{guild_name}] with word {word}.")
 
-    def process_guess(self, guess):
+    def process_guess(self, guess: str):
         out_string = ""
         letters_open = self.letters["open"]
         letters_good = self.letters["good"]
@@ -69,3 +74,43 @@ class WordleGame:
 
     def getLetters(self):
         return self.letters
+
+
+class Party:
+    def __init__(self, host: User, guild_name: str):
+        self.host = host
+        self.guild_name = guild_name
+        self.members = []
+        self.magic = f"{host.name}'s party in [{guild_name}]"
+        self.games = dict()
+        self.open = True
+
+    def getMembers(self) -> List[User]:
+        return self.members
+
+    def addMember(self, member: User):
+        if self.open:
+            print(f"{member.name} has joined {self.magic}.")
+            self.members.append(member)
+
+    def removeMember(self, member: User):
+        if self.open:
+            print(f"{member.name} has left {self.magic}.")
+            self.members.remove(member)
+
+    def closeParty(self):
+        print(f"{self.magic} has closed.")
+        self.open = False
+
+    def isPartyOpen(self) -> bool:
+        return self.open
+
+    def addGame(self, member: User, game: WordleGame) -> bool:
+        if member in self.members and member.id not in self.games:
+            self.games[member.id] = game
+            print(f"{self.magic} has added a game for {member.name}.")
+            return True
+        return False
+
+    def getGame(self, member: User) -> WordleGame:
+        return self.games[member.id] if member.id in self.games else None

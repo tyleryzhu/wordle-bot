@@ -38,12 +38,12 @@ guild_ids = [920463166591361076, 854112523464212510, 760551825379164170]
 
 
 def verifyGameNotStarted(func):
-    """Decorator to verity no game has started in ctx, and exit early if so."""
+    """Decorator to verify no game has started in ctx, and exit early if not."""
 
     @functools.wraps(func)
     async def wrapper(ctx, *args, **kwargs):
         gid = ctx.guild.id
-        if await bot.checkGame(gid):
+        if bot.checkGame(gid) or bot.checkOpenParty(gid):
             await ctx.respond("Game in progress. End game first to start a new one.")
             return
         return await func(ctx, *args, **kwargs)
@@ -52,13 +52,30 @@ def verifyGameNotStarted(func):
 
 
 def verifyGameStarted(func):
-    """Decorator to verify a game has started in ctx, and exit early if so."""
+    """Decorator to verify a game has started in ctx, and exit early if not."""
 
     @functools.wraps(func)
     async def wrapper(ctx, *args, **kwargs):
         gid = ctx.guild.id
-        if not await bot.checkGame(gid):
+        # Either a game/party exists, which is good, unless the party is still open
+        if not bot.checkGame(gid) or bot.checkOpenParty(gid):
             await ctx.respond("No current game. Start a game first.")
+            return
+        return await func(ctx, *args, **kwargs)
+
+    return wrapper
+
+
+def verifyPartyOpen(func):
+    """Decorator to verify there is an open party in guild, and exit early if not."""
+
+    @functools.wraps(func)
+    async def wrapper(ctx, *args, **kwargs):
+        gid = ctx.guild.id
+        if not bot.checkOpenParty(gid):
+            await ctx.respond(
+                "No open party. Either game in progress already, or party has not been made."
+            )
             return
         return await func(ctx, *args, **kwargs)
 
@@ -92,7 +109,7 @@ async def _validateWord(ctx, word, is_guess=True):
 @bot.slash_command(guild_ids=guild_ids)
 @verifyGameNotStarted
 async def start(
-    ctx,
+    ctx: commands.Context,
     game_type: Option(str, "Choose game type", choices=["collab", "custom", "battle"]),
 ):
     """Starts a new Wordle game (collab, custom, battle) if one hasn't begun already."""
@@ -103,7 +120,7 @@ async def start(
         word = random.choice(WORDS)
 
         host = ctx.me  # TODO: adjust to bot's name
-        await bot.addGame(gid, WordleGame(host, ctx.guild.name, ctx.channel.name, word))
+        bot.addGame(gid, WordleGame(host, ctx.guild.name, ctx.channel.name, word))
         await ctx.send("Send in a guess. You have 6 guesses.")
     elif game_type == "custom":
         await ctx.respond("Starting custom game of Wordle... Check your DMs!")
@@ -122,12 +139,20 @@ async def start(
         if not await _validateWord(ctx, word, is_guess=False):
             await ctx.send("Invalid word chosen. Try again.")
         else:
-            await bot.addGame(
+            bot.addGame(
                 gid, WordleGame(host, ctx.guild.name, ctx.channel.name, word),
             )
             await ctx.send("Word has been chosen! Send in a guess. You have 6 tries.")
     elif game_type == "battle":
-        await ctx.respond("Feature not yet supported. Try something else!")
+        host = ctx.author
+        await ctx.respond(
+            f"{host.name} is starting a Wordle battle... Get ready to fight!\n"
+            + "A party has been opened. Use /join or /leave to interact with the party.\n"
+            + "When ready, the host should use /ready to close the party and start the battle!"
+        )
+        party = bot.addParty(gid, host, ctx.guild.name)
+        party.addMember(host)
+        await host.send(f"You have started a battle in [{ctx.guild.name}].")
     else:
         await ctx.respond(
             f"Invalid game type chosen. Choose either collab, custom, or battle."
@@ -135,10 +160,66 @@ async def start(
 
 
 @bot.slash_command(guild_ids=guild_ids)
+@verifyPartyOpen
+async def join(ctx: commands.Context):
+    """Join current party being made. Only relevant for party modes."""
+    gid = ctx.guild.id
+    party = bot.getGame(gid)  # gets Party if member is None
+    host_name = party.host.name
+    member = ctx.author
+    if member in party.getMembers():
+        await member.send(
+            f"You are already in {host_name}'s game in [{ctx.guild.name}]."
+        )
+    else:
+        party.addMember(member)
+        await member.send(f"You have joined {host_name}'s game in [{ctx.guild.name}].")
+        await ctx.respond(f"{member.name} has joined {host_name}'s game.")
+    return
+
+
+@bot.slash_command(guild_ids=guild_ids)
+@verifyPartyOpen
+async def leave(ctx: commands.Context):
+    """Leave current party you are in. Only relevant for party modes."""
+    gid = ctx.guild.id
+    party = bot.getGame(gid)
+    host_name = party.host.name
+    member = ctx.author
+    # Can't let the host leave!
+    if member == party.host:
+        await ctx.respond(
+            f"You're the host, you can't leave! Use /end to end the game instead."
+        )
+        return
+    if member in party.getMembers():
+        party.removeMember(member)
+        await member.send(f"You have left {host_name}'s game in [{ctx.guild.name}].")
+        await ctx.respond(f"{member.name} has left {host_name}'s game.")
+    else:
+        await member.send(f"You are not in {host_name}'s game in [{ctx.guild.name}].")
+
+
+@bot.slash_command(guild_ids=guild_ids)
+@verifyPartyOpen
+async def ready(ctx: commands.Context):
+    """Close current party you are in and start the game. Only relevant for party modes."""
+    gid = ctx.guild.id
+    party = bot.getGame(gid)
+    member = ctx.author
+    if member in party.getMembers():
+        party.removeMember(member)
+        await member.send(f"You have left {party.host}'s game.")
+        await ctx.send(f"{member.name} has left {party.host}'s game.")
+    else:
+        await member.send(f"You are not in {party.host}'s game.")
+
+
+@bot.slash_command(guild_ids=guild_ids)
 @verifyGameStarted
 async def review(ctx):
     """Review your previous guesses."""
-    game = await bot.getGame(ctx.guild.id)
+    game = bot.getGame(ctx.guild.id)
     await ctx.respond("Your guesses so far are:" + game.getHistory())
 
 
@@ -147,7 +228,7 @@ async def review(ctx):
 async def letters(ctx):
     """Get which letters are still possible."""
 
-    game = await bot.getGame(ctx.guild.id)
+    game = bot.getGame(ctx.guild.id)
     letters = game.getLetters()
     msg = "Your available letters are:\n"
     msg += f":white_circle: Open letters: {' '.join(letters['open'])}\n"
@@ -162,7 +243,7 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
 
     guess = guess.upper()
     gid = ctx.guild.id
-    game = await bot.getGame(gid)
+    game = bot.getGame(gid)
     if ctx.author == game.host:
         await ctx.respond(f"We can't have the host {game.host.name} guessing!")
         return
@@ -176,7 +257,7 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
     await ctx.send(response)
     if guess_result == -1 or guess_result == 1:
         # Game over
-        await bot.deleteGame(gid)
+        bot.deleteGame(gid)
     return
 
 
@@ -185,7 +266,7 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
 async def end(ctx):
     """Ends game in current guild."""
     gid = ctx.guild.id
-    game = await bot.getGame(gid)
+    game = bot.getGame(gid)
     word = game.getWord()
     await ctx.respond(f"Game over! The word was {word}")
     await bot.deleteGame(gid)
