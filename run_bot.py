@@ -1,9 +1,9 @@
+import asyncio
 import functools
 import random
 import logging
 
 import discord
-from discord.mentions import A
 from discord.ext import commands
 from discord.commands import Option
 
@@ -30,11 +30,42 @@ intents.typing = False
 intents.presences = False
 bot = WordleBot(intents=intents)
 
-guild_ids = [920463166591361076, 854112523464212510, 760551825379164170]
+# guild_ids = [920463166591361076, 854112523464212510, 760551825379164170]
 # guild_ids = [854112523464212510]
-# guild_ids = None
+guild_ids = None
 
 # TODO: add in locking so games can't be started over each other
+# TODO: implement hardmode
+# TODO: let people who are done view other channels
+
+
+def create_overwrites(ctx, *objects):
+    """This is just a helper function that creates the overwrites for the
+    voice/text channels.
+    A `discord.PermissionOverwrite` allows you to determine the permissions
+    of an object, whether it be a `discord.Role` or a `discord.Member`.
+    In this case, the `view_channel` permission is being used to hide the channel
+    from being viewed by whoever does not meet the criteria, thus creating a
+    secret channel.
+    """
+    # Taken from https://github.com/Pycord-Development/pycord/blob/master/examples/secret.py
+
+    # a dict comprehension is being utilised here to set the same permission overwrites
+    # for each `discord.Role` or `discord.Member`.
+    overwrites = {
+        obj: discord.PermissionOverwrite(view_channel=True) for obj in objects
+    }
+
+    # prevents the default role (@everyone) from viewing the channel
+    # if it isn't already allowed to view the channel.
+    overwrites.setdefault(
+        ctx.guild.default_role, discord.PermissionOverwrite(view_channel=False)
+    )
+
+    # makes sure the client is always allowed to view the channel.
+    overwrites[ctx.guild.me] = discord.PermissionOverwrite(view_channel=True)
+
+    return overwrites
 
 
 def verifyGameNotStarted(func):
@@ -150,7 +181,7 @@ async def start(
             + "A party has been opened. Use /join or /leave to interact with the party.\n"
             + "When ready, the host should use /ready to close the party and start the battle!"
         )
-        party = bot.addParty(gid, host, ctx.guild.name)
+        party = bot.addParty(gid, host, ctx.guild.name, ctx.channel)
         party.addMember(host)
         await host.send(f"You have started a battle in [{ctx.guild.name}].")
     else:
@@ -206,29 +237,72 @@ async def ready(ctx: commands.Context):
     """Close current party you are in and start the game. Only relevant for party modes."""
     gid = ctx.guild.id
     party = bot.getGame(gid)
-    member = ctx.author
-    if member in party.getMembers():
-        party.removeMember(member)
-        await member.send(f"You have left {party.host}'s game.")
-        await ctx.send(f"{member.name} has left {party.host}'s game.")
-    else:
-        await member.send(f"You are not in {party.host}'s game.")
+    host_name = party.host.name
+    await ctx.respond(f"Closing {host_name}'s party...")
+    party.closeParty()
+
+    await ctx.send(f"Creating private channels for you to battle in...")
+    for i, member in enumerate(party.getMembers()):
+        overwrites = create_overwrites(ctx, member)  # permission is just user, bot
+
+        channel = await ctx.guild.create_text_channel(
+            name="wordle-battle-" + str(i),
+            overwrites=overwrites,
+            topic="Private channel for battlin'. Hush!",
+            reason="Very secret business.",
+        )
+        await channel.send("Your private channel is here. Battle starts in 5 seconds!")
+        party.addChannel(member, channel)
+
+    # TODO: start games in each channel and update party with them,
+    # TODO: then handle guesses from each game
+    word = random.choice(WORDS)
+    members = party.getMembers()
+    channels = party.getChannels()
+    host = ctx.me  # TODO: adjust to bot's name
+
+    member_names = ", ".join([member.name for member in members])
+    await ctx.send(
+        f"{member_names} will be duking it out in a battle!\n"
+        + "Battle starting in 5 seconds..."
+    )
+    await asyncio.sleep(5)
+    await ctx.send("Go!")
+
+    for member, channel in channels.items():
+        result = bot.addGame(
+            gid, WordleGame(host, ctx.guild.name, channel.name, word), member
+        )
+        if not result:
+            await ctx.send(
+                f"Bad error trying to add {member.name}'s game! Exiting now..."
+            )
+            await end(ctx)
+            return
+        await channel.send("Send in a guess. You have 6 guesses.")
 
 
 @bot.slash_command(guild_ids=guild_ids)
 @verifyGameStarted
 async def review(ctx):
     """Review your previous guesses."""
-    game = bot.getGame(ctx.guild.id)
-    await ctx.respond("Your guesses so far are:" + game.getHistory())
+    gid = ctx.guild.id
+    if bot.isParty(gid):
+        game = bot.getGame(gid, ctx.author)
+    else:
+        game = bot.getGame(gid)
+    await ctx.respond("Your guesses so far are:\n" + game.getHistory())
 
 
 @bot.slash_command(guild_ids=guild_ids)
 @verifyGameStarted
 async def letters(ctx):
     """Get which letters are still possible."""
-
-    game = bot.getGame(ctx.guild.id)
+    gid = ctx.guild.id
+    if bot.isParty(gid):
+        game = bot.getGame(gid, ctx.author)
+    else:
+        game = bot.getGame(gid)
     letters = game.getLetters()
     msg = "Your available letters are:\n"
     msg += f":white_circle: Open letters: {' '.join(letters['open'])}\n"
@@ -240,15 +314,19 @@ async def letters(ctx):
 @verifyGameStarted
 async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
     """Make a guess in a wordle game."""
+    # TODO: restrict channel owner to guessing
 
     guess = guess.upper()
     gid = ctx.guild.id
-    game = bot.getGame(gid)
+    if bot.isParty(gid):
+        game = bot.getGame(gid, ctx.author)
+    else:
+        game = bot.getGame(gid)
     if ctx.author == game.host:
         await ctx.respond(f"We can't have the host {game.host.name} guessing!")
         return
 
-    print(f"Attempted guess in [{ctx.guild.name}] was {guess}")
+    print(f"Attempted guess in [{ctx.channel.name}] by {ctx.author.name} was {guess}")
 
     if not await _validateWord(ctx, guess, is_guess=True):
         return
@@ -257,7 +335,22 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
     await ctx.send(response)
     if guess_result == -1 or guess_result == 1:
         # Game over
+        if bot.isParty(gid):
+            party = bot.getGame(gid)
+            await party.base_channel.send(
+                f"{ctx.author} has finished in {game.turns} turns!"
+            )
+            party.deleteGame(ctx.author)
+            if party.allGamesDone():
+                await party.base_channel.send(
+                    "All games are over. Ending in 10 seconds..."
+                )
+                await asyncio.sleep(10)
+                await end(ctx)
+            return
         bot.deleteGame(gid)
+        return
+    await ctx.send("Try again!")
     return
 
 
@@ -266,10 +359,19 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
 async def end(ctx):
     """Ends game in current guild."""
     gid = ctx.guild.id
-    game = bot.getGame(gid)
-    word = game.getWord()
-    await ctx.respond(f"Game over! The word was {word}")
-    await bot.deleteGame(gid)
+    if bot.isParty(gid):
+        party = bot.getGame(gid)
+        members = party.getMembers()
+        channels = party.getChannels()
+        for member, channel in channels.items():
+            await channel.delete()
+        await party.base_channel.send(f"Game over!")
+        await bot.deleteGame(gid)
+    else:
+        game = bot.getGame(gid)
+        word = game.getWord()
+        await bot.deleteGame(gid)
+        await ctx.respond(f"Game over! The word was {word}")
 
 
 bot.run(MYTOKEN)

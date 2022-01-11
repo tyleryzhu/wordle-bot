@@ -1,8 +1,10 @@
 import random
-from typing import List
+from typing import List, Dict
 
 import discord
+from discord.abc import GuildChannel
 from discord.ext import commands
+from discord.guild import Guild
 from discord.user import User
 
 from utils import WORDLEBANK
@@ -77,12 +79,14 @@ class WordleGame:
 
 
 class Party:
-    def __init__(self, host: User, guild_name: str):
+    def __init__(self, host: User, guild_name: str, base_channel: GuildChannel):
         self.host = host
         self.guild_name = guild_name
+        self.base_channel = base_channel
         self.members = []
         self.magic = f"{host.name}'s party in [{guild_name}]"
         self.games = dict()
+        self.channels = dict()
         self.open = True
 
     def getMembers(self) -> List[User]:
@@ -105,12 +109,29 @@ class Party:
     def isPartyOpen(self) -> bool:
         return self.open
 
-    def addGame(self, member: User, game: WordleGame) -> bool:
-        if member in self.members and member.id not in self.games:
-            self.games[member.id] = game
+    def getGame(self, member: User) -> WordleGame:
+        return self.games[member] if member in self.games else None
+
+    def deleteGame(self, member: User):
+        del self.games[member]
+
+    def allGamesDone(self):
+        return not self.games
+
+    def addGame(self, game: WordleGame, member: User) -> bool:
+        if member in self.members and member not in self.games:
+            self.games[member] = game
             print(f"{self.magic} has added a game for {member.name}.")
             return True
         return False
 
-    def getGame(self, member: User) -> WordleGame:
-        return self.games[member.id] if member.id in self.games else None
+    def getChannels(self) -> Dict[User, GuildChannel]:
+        return self.channels
+
+    def addChannel(self, member: User, channel: GuildChannel) -> bool:
+        if member in self.members and member not in self.channels:
+            self.channels[member] = channel
+            print(f"{self.magic} has added channel [{channel.name}] for {member.name}.")
+            return True
+        return False
+

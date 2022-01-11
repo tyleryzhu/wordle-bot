@@ -1,5 +1,5 @@
 import discord
-from discord.mentions import A
+from discord.abc import GuildChannel
 from discord.ext import commands
 from discord.commands import Option
 from discord.user import User
@@ -27,9 +27,11 @@ class WordleBot(discord.Bot):
         if member is None:  # means checking for either party or a normal game
             return guild_id in self.games
         else:  # Check withiin a guild for a game
-            if guild_id not in self.games and isinstance(self.games[guild_id], Party):
+            if guild_id not in self.games or not isinstance(
+                self.games[guild_id], Party
+            ):
                 return False
-            return member in self.games[guild_id].getMembers()
+            return False if self.games[guild_id].getGame(member) is None else True
 
     def checkOpenParty(self, guild_id: int):
         """Check if guild has a party, and if it's open."""
@@ -54,7 +56,7 @@ class WordleBot(discord.Bot):
                 self.games[guild_id] = game
                 return True
             else:
-                return self.games[guild_id].addGame(game)
+                return self.games[guild_id].addGame(game, member)
 
     def getGame(self, guild_id: int, member: User = None):
         if self.checkGame(guild_id, member):
@@ -65,9 +67,14 @@ class WordleBot(discord.Bot):
         else:
             return None
 
-    def addParty(self, guild_id: int, host: User, guild_name: str) -> Party:
+    def isParty(self, guild_id: int):
+        return isinstance(self.games[guild_id], Party)
+
+    def addParty(
+        self, guild_id: int, host: User, guild_name: str, base_channel: GuildChannel
+    ) -> Party:
         if self.checkGame(guild_id):
             return False
-        self.games[guild_id] = Party(host, guild_name)
+        self.games[guild_id] = Party(host, guild_name, base_channel)
         print(f"Party in [{guild_name}] w/ host {host.name} added!")
         return self.games[guild_id]
