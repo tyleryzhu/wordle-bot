@@ -26,6 +26,8 @@ Battle Mode Specific Commands:
 
 To add my bot, you can add it to your own discord server using [this link](https://discord.com/api/oauth2/authorize?client_id=928178745209155625&permissions=274878237696&scope=bot). It's running on a server 24/7 and periodically will be reset in case things break. Please file bug reports so I can fix them!
 
+One thing to note is that the owner of the server will always see all private channels (this is a discord feature unfortunately), so this means the owner of the server should mute all notifications from the server temporarily to prevent guessees from being spoiled. 
+
 ## Setting up your own bot on discord 
 
 You can also set up your own bot to run this script by creating a discord application and running this script with your bot token. Follow these steps for that:
