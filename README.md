@@ -4,7 +4,11 @@
   <img src="wordlebot.png"/>
 </p>
 
-Discord Bot for playing wordle. You can either add my bot (which will be generally running 24/7 outside of bug fixes) or add your own. See below for instructions to both.
+Discord Bot for playing wordle. You can either add my bot (which will be generally running 24/7 outside of bug fixes) or add your own. Here is a quick trailer of two people demonstrating the battle functionality.
+
+https://user-images.githubusercontent.com/22010655/149846021-cacd2e34-6921-463b-a7a3-732ee62e574d.mov
+
+You can find the full demo [here](https://youtu.be/zLEQyjqtegk).
 
 ## How to play
 
