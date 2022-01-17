@@ -134,4 +134,3 @@ class Party:
             print(f"{self.magic} has added channel [{channel.name}] for {member.name}.")
             return True
         return False
-

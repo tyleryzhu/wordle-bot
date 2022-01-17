@@ -78,3 +78,4 @@ class WordleBot(discord.Bot):
         self.games[guild_id] = Party(host, guild_name, base_channel)
         print(f"Party in [{guild_name}] w/ host {host.name} added!")
         return self.games[guild_id]
+

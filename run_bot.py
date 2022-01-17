@@ -4,25 +4,20 @@ import random
 import logging
 
 import discord
+from discord import Guild
 from discord.ext import commands
 from discord.commands import Option
+from discord.user import User
 
 from settings import MYTOKEN
-from utils import WORDLEBANK
+from utils import WORDLEBANK, GAME_WORDS
 from wordle_game import WordleGame
 from wordle_bot import WordleBot
 
-WORDS = WORDLEBANK
-WORDS_SET = set(WORDS)
-
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger("discord")
-# logger.setLevel(logging.DEBUG)
-# handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
-# handler.setFormatter(
-#     logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s")
-# )
-# logger.addHandler(handler)
+ALL_WORDS = WORDLEBANK
+CHOICE_WORDS = GAME_WORDS
+WORDS_SET = set(ALL_WORDS)
+GAME_SET = set(GAME_WORDS)
 
 
 intents = discord.Intents(messages=True, guilds=True)
@@ -36,7 +31,6 @@ guild_ids = None
 
 # TODO: add in locking so games can't be started over each other
 # TODO: implement hardmode
-# TODO: let people who are done view other channels
 
 
 def create_overwrites(ctx, *objects):
@@ -148,7 +142,7 @@ async def start(
     gid = ctx.guild.id
     if game_type == "collab":
         await ctx.respond("Starting collaborative game of Wordle...")
-        word = random.choice(WORDS)
+        word = random.choice(CHOICE_WORDS)
 
         host = ctx.me  # TODO: adjust to bot's name
         bot.addGame(gid, WordleGame(host, ctx.guild.name, ctx.channel.name, word))
@@ -242,11 +236,12 @@ async def ready(ctx: commands.Context):
     party.closeParty()
 
     await ctx.send(f"Creating private channels for you to battle in...")
-    for i, member in enumerate(party.getMembers()):
+    for member in party.getMembers():
+
         overwrites = create_overwrites(ctx, member)  # permission is just user, bot
 
         channel = await ctx.guild.create_text_channel(
-            name="wordle-battle-" + str(i),
+            name="wordle-battle-" + member.name,
             overwrites=overwrites,
             topic="Private channel for battlin'. Hush!",
             reason="Very secret business.",
@@ -256,7 +251,7 @@ async def ready(ctx: commands.Context):
 
     # TODO: start games in each channel and update party with them,
     # TODO: then handle guesses from each game
-    word = random.choice(WORDS)
+    word = random.choice(GAME_WORDS)
     members = party.getMembers()
     channels = party.getChannels()
     host = ctx.me  # TODO: adjust to bot's name
@@ -319,6 +314,12 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
     guess = guess.upper()
     gid = ctx.guild.id
     if bot.isParty(gid):
+        party = bot.getGame(gid)
+        channels = party.getChannels()
+        # Verify person guessing in the channel belongs there
+        if channels[ctx.author] != ctx.channel:
+            ctx.respond(f"{ctx.author.name}, this isn't your game! Stop guessing.")
+            return
         game = bot.getGame(gid, ctx.author)
     else:
         game = bot.getGame(gid)
@@ -336,11 +337,9 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
     if guess_result == -1 or guess_result == 1:
         # Game over
         if bot.isParty(gid):
+            await updateMemberFinish(ctx.guild, ctx.author, guess_result)
+
             party = bot.getGame(gid)
-            await party.base_channel.send(
-                f"{ctx.author} has finished in {game.turns} turns!"
-            )
-            party.deleteGame(ctx.author)
             if party.allGamesDone():
                 await party.base_channel.send(
                     "All games are over. Ending in 10 seconds..."
@@ -352,6 +351,35 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
         return
     await ctx.send("Try again!")
     return
+
+
+async def updateMemberFinish(guild: Guild, member: User, result: int):
+    """Updates party given by gid when member finishes a game."""
+    gid = guild.id
+    if not bot.isParty(gid):
+        return
+    party = bot.getGame(gid)
+    game = bot.getGame(gid, member)
+    print(f"{member.name} is done!")
+
+    # First send their status to the main channel.
+    if result == 1:
+        await party.base_channel.send(
+            f"{member.name} has finished in {game.turns} turns!"
+        )
+    else:
+        await party.base_channel.send(
+            f"{member.name} did not finish in {game.turns} turns!"
+        )
+    # First allow them to see all the private channels
+    channels = party.getChannels()
+    for channel in channels.values():
+        await channel.set_permissions(
+            member, overwrite=discord.PermissionOverwrite(view_channel=True)
+        )
+
+    # Then add this member to the done list by deleting the game
+    party.deleteGame(member)
 
 
 @bot.slash_command(guild_ids=guild_ids)
@@ -366,7 +394,7 @@ async def end(ctx):
         for member, channel in channels.items():
             await channel.delete()
         await party.base_channel.send(f"Game over!")
-        await bot.deleteGame(gid)
+        bot.deleteGame(gid)
     else:
         game = bot.getGame(gid)
         word = game.getWord()
