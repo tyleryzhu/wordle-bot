@@ -8,7 +8,7 @@ Discord Bot for playing wordle. You can either add my bot (which will be general
 
 https://user-images.githubusercontent.com/22010655/149846021-cacd2e34-6921-463b-a7a3-732ee62e574d.mov
 
-You can find the full demo [here](https://youtu.be/zLEQyjqtegk).
+You can find the full demo [here](https://youtu.be/zLEQyjqtegk). If you have questions/bugs, shoot me a message on discord at tzhu#3585. 
 
 ## How to play
 

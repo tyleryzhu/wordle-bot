@@ -23,7 +23,8 @@ GAME_SET = set(GAME_WORDS)
 intents = discord.Intents(messages=True, guilds=True)
 intents.typing = False
 intents.presences = False
-bot = WordleBot(intents=intents)
+activity = discord.Game(name="Wordle! Use /start")
+bot = WordleBot(intents=intents, activity=activity)
 
 # guild_ids = [920463166591361076, 854112523464212510, 760551825379164170]
 # guild_ids = [854112523464212510]
@@ -81,6 +82,9 @@ def verifyGameStarted(func):
 
     @functools.wraps(func)
     async def wrapper(ctx, *args, **kwargs):
+        if ctx.guild is None:
+            await ctx.respond("Guesses don't work in DMs! Do it in the channel.")
+            return
         gid = ctx.guild.id
         # Either a game/party exists, which is good, unless the party is still open
         if not bot.checkGame(gid) or bot.checkOpenParty(gid):
@@ -318,7 +322,9 @@ async def guess(ctx, guess: Option(str, "Enter your 5-letter guess")):
         channels = party.getChannels()
         # Verify person guessing in the channel belongs there
         if channels[ctx.author] != ctx.channel:
-            ctx.respond(f"{ctx.author.name}, this isn't your game! Stop guessing.")
+            await ctx.respond(
+                f"{ctx.author.name}, this isn't your game! Stop guessing."
+            )
             return
         game = bot.getGame(gid, ctx.author)
     else:
@@ -398,7 +404,7 @@ async def end(ctx):
     else:
         game = bot.getGame(gid)
         word = game.getWord()
-        await bot.deleteGame(gid)
+        bot.deleteGame(gid)
         await ctx.respond(f"Game over! The word was {word}")
 
 
