@@ -14,7 +14,10 @@ You can find the full demo [here](https://youtu.be/zLEQyjqtegk). If you have que
 
 Wordle utilizes slash commands in discord to function. There are a few commands that you can use to play wordle.
 
-* `/start`: Begins a Wordle game for the server in one of three modes: `collab`, where you work together on a Wordle game; `custom`, where one person can provide a custom word for others to guess; and `battle`, a multiplayer mode where multiple people compete on the same world at once.
+* `/start`: Begins a Wordle game for the server in one of three modes:
+  * `collab`, where you work together on a Wordle game
+  * `custom`, where one person can provide a custom word for others to guess
+  * `battle`, a multiplayer mode where multiple people compete on the same world at once.
 * `/guess`: Make a guess for Wordle. Words must be real words.  
 * `/letters`: Get a list of letters that you haven't guessed yet or are in the word.
 * `/review`: Get a list of all your previous guesses.
